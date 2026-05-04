@@ -1,4 +1,4 @@
-I = imread('image.png');
+I = imread('image.jpg');
 %size(I);
 subplot(1,2,1)
 imshow(I)
@@ -63,3 +63,11 @@ figure
 imshow(R,[])
 title('Réponse de Harris')
 colorbar
+
+%detection des points
+threshold = 0.01 * max(R(:));
+corners = R > threshold;
+
+figure
+imshow(corners)
+title('Coins détectés')
