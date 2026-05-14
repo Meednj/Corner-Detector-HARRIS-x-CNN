@@ -247,13 +247,18 @@ def corner_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return bce + smoothness
 
 
-def train_corner_cnn(model: nn.Module, epochs: int = 50, batch_size: int = 32) -> nn.Module:
-    dataset   = SyntheticCornerDataset(num_samples=6000, size=64)
+def train_corner_cnn(model: nn.Module, epochs: int = 15, batch_size: int = 64) -> nn.Module:
+    # ── Optimize for speed ──────────────────────────────────────────────────────
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    
+    dataset   = SyntheticCornerDataset(num_samples=2000, size=64)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-5)
 
+    print(f"Training on {device}...", flush=True)
     print("Training Improved CNN Corner Detector (Harris-style GT)...", flush=True)
     print("=" * 55, flush=True)
 
@@ -261,6 +266,9 @@ def train_corner_cnn(model: nn.Module, epochs: int = 50, batch_size: int = 32) -
         model.train()
         total_loss = 0.0
         for imgs, targets in dataloader:
+            imgs = imgs.to(device)
+            targets = targets.to(device)
+            
             optimizer.zero_grad()
             outputs = model(imgs)
             loss = corner_loss(outputs, targets)
@@ -272,7 +280,7 @@ def train_corner_cnn(model: nn.Module, epochs: int = 50, batch_size: int = 32) -
         scheduler.step()
         avg_loss = total_loss / len(dataloader)
 
-        if (epoch + 1) % 5 == 0:
+        if (epoch + 1) % 3 == 0:
             print(f"Epoch {epoch+1:>3}/{epochs}, Loss: {avg_loss:.4f}, "
                   f"LR: {scheduler.get_last_lr()[0]:.5f}", flush=True)
 
