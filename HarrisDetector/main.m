@@ -1,6 +1,6 @@
 clear; close all;
 
-I = imread('images/tree.png');
+I = imread('images/cube.png');
 
 if size(I,3)==3
     I = rgb2gray(I);
@@ -9,14 +9,14 @@ end
 I = double(I);
 
 % parametres
-k = 0.04;
-sigma = 3;
-sizeG = 7;
-taille = 5;
+k           = 0.05;
+sigma       = 1.5;
+sizeG       = 7;
+taille      = 5;
+seuil_ratio = 0.0002;
 
 % image normale 
-seuil = 0.05 * max(I(:));
-[R, coins] = harris_detector(I, k, sigma, sizeG, seuil, taille);
+[R, coins] = harris_detector(I, k, sigma, sizeG, seuil_ratio, taille);
 
 figure
 imshow(I,[]); hold on
@@ -26,7 +26,7 @@ title('Coins - image normale')
 
 % image bruitee
 I_noise = add_noise(I, 0.02);
-[Rn, coins_n] = harris_detector(I_noise, k, sigma, sizeG, seuil, taille);
+[Rn, coins_n] = harris_detector(I_noise, k, sigma, sizeG, seuil_ratio, taille);
 
 figure
 imshow(I_noise,[]); hold on
@@ -36,7 +36,7 @@ title('Coins - image bruitee')
 
 % image eclaircie
 I_bright = change_brightness(I, 1, 50);
-[Rb, coins_b] = harris_detector(I_bright, k, sigma, sizeG, seuil, taille);
+[Rb, coins_b] = harris_detector(I_bright, k, sigma, sizeG, seuil_ratio, taille);
 
 figure
 imshow(I_bright,[]); hold on

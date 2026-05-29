@@ -349,6 +349,24 @@
       color: var(--accent);
     }
 
+    .corner-count.empty {
+      background: rgba(255, 184, 107, 0.12);
+      border-color: rgba(255, 184, 107, 0.28);
+      color: #ffb86b;
+    }
+
+    .result-note {
+      margin-bottom: 14px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+      display: none;
+    }
+
+    .result-note.visible {
+      display: block;
+    }
+
     .result-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -550,6 +568,7 @@
         <h2>Output</h2>
         <div class="corner-count" id="cornerCount">— corners</div>
       </div>
+      <div class="result-note" id="resultNote"></div>
       <div class="result-grid">
         <div class="result-card">
           <img id="outOriginal" alt="original" />
@@ -587,7 +606,10 @@
       e.preventDefault();
       dropzone.classList.remove('drag-over');
       const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) loadPreview(file);
+      if (file && file.type.startsWith('image/')) {
+        fileInput.files = e.dataTransfer.files;
+        loadPreview(file);
+      }
     });
 
     fileInput.addEventListener('change', () => {
@@ -631,11 +653,23 @@
         document.getElementById('outOverlay').src = 'data:image/png;base64,' + data.overlay;
         document.getElementById('outHarris').src = 'data:image/png;base64,' + data.harris;
 
+        const cornerCountEl = document.getElementById('cornerCount');
+        const resultNoteEl = document.getElementById('resultNote');
         let cornerText = data.corner_count + ' corners';
         if (data.saved) {
           cornerText += ' • Saved';
         }
-        document.getElementById('cornerCount').textContent = cornerText;
+
+        cornerCountEl.textContent = cornerText;
+        cornerCountEl.classList.toggle('empty', data.corner_count === 0);
+
+        if (data.corner_count === 0) {
+          resultNoteEl.textContent = 'No corners passed the current threshold. Try lowering the threshold or uploading a sharper image with stronger edges.';
+          resultNoteEl.classList.add('visible');
+        } else {
+          resultNoteEl.textContent = '';
+          resultNoteEl.classList.remove('visible');
+        }
 
         document.getElementById('results').classList.add('visible');
         document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });

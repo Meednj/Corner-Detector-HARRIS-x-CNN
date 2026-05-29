@@ -1,105 +1,77 @@
 """
-app.py — Flask server for the CNN Corner Detector UI
+app.py — Flask server for CNN Corner Detector (Homographic Adaptation)
 Run:  python app.py
-Then open:  http://localhost:5000
+Open: http://localhost:5000
 """
 
-import io
-import base64
-import json
-import numpy as np
-import cv2
-import torch
-import os
-import tempfile
+import base64, json, math, os, tempfile
 from datetime import datetime
 from pathlib import Path
+
+import cv2
+import numpy as np
+import torch
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
 
-# ── Import your model ─────────────────────────────────────────────────────────
-from corner_cnn import PureCornerCNN, train_corner_cnn, detect_corners_pure_cnn
+from corner_cnn import (CornerNet, train_model, detect_corners,
+                         download_coco, IMG_SIZE, N_HOMO)
 
 app = Flask(__name__, static_folder="static")
+RESULTS_DIR = Path("results"); RESULTS_DIR.mkdir(exist_ok=True)
+MODEL_PATH  = "corner_cnn.pth"
 
-# ── Create results folder ───────────────────────────────────────────────────────
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
-os.makedirs(RESULTS_DIR, exist_ok=True)
+device = None
+model  = None
 
-# ── Load / train model once at startup ───────────────────────────────────────
-MODEL_PATH = "corner_cnn.pth"
-model = PureCornerCNN()
 
-# Try to load existing weights, but handle architecture changes gracefully
-model_loaded = False
-if os.path.exists(MODEL_PATH):
-    try:
-        model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
-        print("Loaded saved model weights.")
-        model_loaded = True
-    except RuntimeError as e:
-        print(f"⚠ Could not load existing weights (architecture changed): {str(e)[:100]}...")
-        print("Training new model with improved architecture...")
-        os.remove(MODEL_PATH)
+def initialize():
+    global model, device
+    if model is not None: return
 
-if not model_loaded:
-    print("Training improved CNN corner detector (this takes ~3-5 minutes)…")
-    model = train_corner_cnn(model, epochs=50, batch_size=32)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model  = CornerNet(base=24)
+
+    if os.path.exists(MODEL_PATH):
+        try:
+            model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+            print(f"Loaded ← {MODEL_PATH}")
+        except RuntimeError:
+            print("Architecture changed — retraining…")
+            os.remove(MODEL_PATH)
+            _train()
+    else:
+        print("No weights found — training…")
+        _train()
+
+    model.to(device).eval()
+
+
+def _train():
+    global model
+    paths = download_coco(600)
+    model = train_model(model, paths,
+                        epochs=25, batch_size=16,
+                        size=IMG_SIZE, n_homo=N_HOMO)
     torch.save(model.state_dict(), MODEL_PATH)
-    print(f"Weights saved to {MODEL_PATH}")
-
-model.eval()
+    print(f"Saved → {MODEL_PATH}")
 
 
-def pil_to_gray_np(pil_img: Image.Image) -> np.ndarray:
-    return np.array(pil_img.convert("L"))
-
-
-def np_to_b64_png(arr: np.ndarray) -> str:
+def encode_png(arr):
     _, buf = cv2.imencode(".png", arr)
-    return base64.b64encode(buf).decode("utf-8")
+    return base64.b64encode(buf).decode()
 
-
-def save_results(corners, original, cnn_response, overlay, heatmap_color, harris_color, filename_prefix=None):
-    """
-    Save detection results to files in the results folder.
-    Returns path to saved results.
-    """
-    if filename_prefix is None:
-        filename_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    result_subdir = os.path.join(RESULTS_DIR, filename_prefix)
-    os.makedirs(result_subdir, exist_ok=True)
-    
-    # Save images
-    cv2.imwrite(os.path.join(result_subdir, "original.png"), original)
-    cv2.imwrite(os.path.join(result_subdir, "heatmap.png"), heatmap_color)
-    cv2.imwrite(os.path.join(result_subdir, "overlay.png"), overlay)
-    cv2.imwrite(os.path.join(result_subdir, "harris_comparison.png"), harris_color)
-    
-    # Save corner response map
-    response_normalized = cv2.normalize(cnn_response, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    cv2.imwrite(os.path.join(result_subdir, "corner_response.png"), response_normalized)
-    
-    # Save results as JSON
-    results_json = {
-        "timestamp": datetime.now().isoformat(),
-        "corner_count": len(corners),
-        "corners": [{"x": int(x), "y": int(y), "score": float(score)} for x, y, score in corners],
-        "stats": {
-            "min_score": float(np.min(cnn_response)) if len(corners) > 0 else 0,
-            "max_score": float(np.max(cnn_response)) if len(corners) > 0 else 0,
-            "mean_score": float(np.mean([s for _, _, s in corners])) if len(corners) > 0 else 0,
-            "image_size": list(original.shape)
-        }
-    }
-    
-    json_path = os.path.join(result_subdir, "results.json")
-    with open(json_path, 'w') as f:
-        json.dump(results_json, f, indent=2)
-    
-    print(f"Results saved to: {result_subdir}")
-    return result_subdir, results_json
+def save_session(corners, gray, overlay):
+    ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = RESULTS_DIR / ts; out.mkdir(exist_ok=True)
+    cv2.imwrite(str(out/"original.png"),        gray)
+    cv2.imwrite(str(out/"corners_overlay.png"), overlay)
+    with open(out/"results.json","w") as f:
+        json.dump({"timestamp": datetime.now().isoformat(),
+                   "corner_count": len(corners),
+                   "corners": [{"x":int(x),"y":int(y),"score":float(s)}
+                                for x,y,s in corners]}, f, indent=2)
+    return str(out)
 
 
 @app.route("/")
@@ -111,64 +83,56 @@ def index():
 def detect():
     if "image" not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
+    initialize()
 
-    file = request.files["image"]
-    pil_img = Image.open(file.stream)
-    gray = pil_to_gray_np(pil_img)
+    threshold  = float(request.form.get("threshold",  0.55))
+    nms_radius = int(request.form.get("nms_radius",   18))
+    max_pts    = int(request.form.get("max_corners",  50))
+    do_save    = request.form.get("save_results","true").lower()=="true"
 
-    # Save the upload to a real OS temp file so OpenCV can read it on Windows too.
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
-    os.close(tmp_fd)
-    if not cv2.imwrite(tmp_path, gray):
-        os.remove(tmp_path)
-        return jsonify({"error": "Failed to save uploaded image"}), 500
-
-    threshold = float(request.form.get("threshold", 0.35))
-    nms_radius = int(request.form.get("nms_radius", 5))
-    save_results_flag = request.form.get("save_results", "true").lower() == "true"
-
+    gray = np.array(Image.open(request.files["image"].stream).convert("L"))
+    fd,tmp = tempfile.mkstemp(suffix=".png"); os.close(fd)
     try:
-        original, cnn_response, corners = detect_corners_pure_cnn(
-            model, tmp_path, threshold=threshold, nms_radius=nms_radius
-        )
+        cv2.imwrite(tmp, gray)
+        heatmap, response, corners = detect_corners(
+                                    model, tmp,
+                                    threshold=threshold,
+                                    nms_radius=nms_radius,
+                                    max_corners=max_pts,
+                                    device=device
+                                )
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(tmp): os.remove(tmp)
 
-    # Build corner overlay
-    overlay = cv2.cvtColor(original, cv2.COLOR_GRAY2BGR)
-    for (x, y, score) in corners:
-        cv2.circle(overlay, (x, y), 5, (0, 255, 120), -1)
-        cv2.circle(overlay, (x, y), 6, (255, 255, 255), 1)
+    overlay = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    for x,y,score in corners:
+        norm  = min(score,1.0)
+        color = (0,int(255*(1-norm*0.7)),int(255*norm))
+        cv2.circle(overlay,(x,y),5,color,-1)
+        cv2.circle(overlay,(x,y),6,(255,255,255),1)
 
-    # Heatmap of response
-    heatmap_norm = cv2.normalize(cnn_response, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_INFERNO)
+    heatmap_vis = (heatmap * 255).astype(np.uint8)
 
-    # Classical Harris for comparison panel
-    harris = cv2.cornerHarris(original, blockSize=2, ksize=3, k=0.04)
-    harris = np.clip(harris, 0, None)
-    harris = cv2.normalize(harris, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    harris_color = cv2.applyColorMap(harris, cv2.COLORMAP_INFERNO)
+    heatmap_vis = cv2.applyColorMap(heatmap_vis, cv2.COLORMAP_INFERNO)
 
-    # Save results if requested
-    result_dir = None
-    results_json = None
-    if save_results_flag:
-        result_dir, results_json = save_results(
-            corners, original, cnn_response, overlay, heatmap_color, harris_color
-        )
+    # Harris reference
+    harris = cv2.cornerHarris(gray.astype(np.float32), 2, 3, 0.04)
+    harris = cv2.dilate(harris, None)
 
+    harris_vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    harris_vis[harris > 0.01 * harris.max()] = [0, 140, 255]
+    result_path = save_session(corners,gray,overlay) if do_save else None
     return jsonify({
-        "original":   np_to_b64_png(original),
-        "heatmap":    np_to_b64_png(heatmap_color),
-        "overlay":    np_to_b64_png(overlay),
-        "harris":     np_to_b64_png(harris_color),
-        "corner_count": len(corners),
-        "saved": save_results_flag,
-        "result_path": result_dir
-    })
+                    "original": encode_png(gray),
+                    "heatmap": encode_png(heatmap_vis),
+                    "overlay": encode_png(overlay),
+                    "harris": encode_png(harris_vis),
+                    "corner_count": len(corners),
+                    "corners": [{"x":int(x),"y":int(y),"score":float(s)}
+                                 for x,y,s in corners],
+                    "saved": do_save, "result_path": result_path})
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    initialize()
+    app.run(debug=True, port=5000, use_reloader=False)

@@ -1,4 +1,4 @@
-function [R, coins] = harris_detector(I, k, sigma, sizeG, seuil, taille)
+function [R, coins] = harris_detector(I, k, sigma, sizeG, seuil_ratio, taille)
 
     [Ix, Iy] = sobel_gradients(I);
 
@@ -13,6 +13,8 @@ function [R, coins] = harris_detector(I, k, sigma, sizeG, seuil, taille)
     Sxy = conv2(Ixy, g, 'same');
 
     R = (Sx2 .* Sy2 - Sxy.^2) - k * (Sx2 + Sy2).^2;
+
+    seuil = seuil_ratio * max(R(:));  % ← computed HERE where R exists
 
     coins = non_max_suppression(R, seuil, taille);
 
