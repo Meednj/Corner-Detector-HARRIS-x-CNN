@@ -67,6 +67,6 @@ def load_model(checkpoint_path: str | Path, device: str | torch.device = "cpu") 
     model_args = checkpoint.get("model_args", {})
     model = CornerDetector(**model_args).to(device)
     model.load_state_dict(checkpoint["model_state"])
+    model.image_size = int(checkpoint.get("image_size", 128))
     model.eval()
     return model
-

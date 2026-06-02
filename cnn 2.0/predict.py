@@ -17,12 +17,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", default="runs/corner_detector_best.pt")
     parser.add_argument("--image", required=True)
     parser.add_argument("--out", default="prediction.png")
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=-1.0,
-        help="Detection threshold in [0, 1]. Use -1 for automatic CNN thresholding.",
-    )
+    parser.add_argument("--threshold", type=float, default=-1.0,
+                        help="Detection threshold (0-1). Use -1 for auto (recommended).")
     parser.add_argument("--nms-kernel", type=int, default=21)
     parser.add_argument("--max-corners", type=int, default=28)
     parser.add_argument("--border-margin", type=int, default=10)
@@ -30,20 +26,19 @@ def parse_args() -> argparse.Namespace:
         "--detector",
         choices=("harris", "cnn"),
         default="cnn",
-        help="Use cnn for the trained heatmap model, or harris for a classical baseline.",
     )
     parser.add_argument(
         "--preprocess",
         choices=("gray", "canny", "invert", "sobel"),
-        default="gray",
-        help="Input transform before the CNN. Gray matches the synthetic training input.",
+        default="sobel",
     )
     parser.add_argument("--quality-level", type=float, default=0.04)
     parser.add_argument("--min-distance", type=int, default=16)
     parser.add_argument("--block-size", type=int, default=7)
     parser.add_argument("--harris-k", type=float, default=0.04)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--save-heatmap", action="store_true")
+    parser.add_argument("--save-heatmap", action="store_true",
+                        help="Also save a coloured heatmap for debugging.")
     return parser.parse_args()
 
 
@@ -68,30 +63,33 @@ def preprocess_image(gray: np.ndarray, mode: str) -> np.ndarray:
     else:
         raise ValueError(f"unknown preprocess mode: {mode}")
 
-    lo = float(result.min())
-    hi = float(result.max())
+    # Normalize to [0, 1] per-image so real photos match synthetic training distribution
+    lo, hi = result.min(), result.max()
     if hi - lo > 1e-6:
         result = (result - lo) / (hi - lo)
-    return result.astype(np.float32)
+    return result
 
 
 def auto_threshold(heatmap: np.ndarray) -> float:
-    """Choose a conservative per-image threshold from the strongest CNN responses."""
-    top = heatmap[heatmap >= np.percentile(heatmap, 99.0)]
-    if top.size == 0:
+    """Derive threshold from the heatmap itself: mean of top-1% minus one std."""
+    flat = heatmap.flatten()
+    top = flat[flat >= np.percentile(flat, 99.0)]
+    if len(top) == 0:
         return 0.5
     return float(np.clip(top.mean() - top.std(), 0.1, 0.95))
 
 
 @torch.no_grad()
 def predict_heatmap(model: torch.nn.Module, gray: np.ndarray, device: torch.device) -> np.ndarray:
-    height, width = gray.shape
+    H, W = gray.shape
+    # Resize to the resolution recorded in the checkpoint.
     model_size = getattr(model, "image_size", 128)
     resized = cv2.resize(gray, (model_size, model_size), interpolation=cv2.INTER_LINEAR)
     tensor = torch.from_numpy(resized[None, None, ...]).float().to(device)
     logits = model(tensor)
-    heatmap = torch.sigmoid(logits)[0, 0].cpu().numpy()
-    return cv2.resize(heatmap, (width, height), interpolation=cv2.INTER_LINEAR)
+    heatmap_small = torch.sigmoid(logits)[0, 0].cpu().numpy()
+    # Scale heatmap back to original image size
+    return cv2.resize(heatmap_small, (W, H), interpolation=cv2.INTER_LINEAR)
 
 
 def overlay_corners(rgb: np.ndarray, corners: list[tuple[int, int, float]]) -> np.ndarray:
@@ -145,6 +143,7 @@ def detect_harris_corners(
 def main() -> None:
     args = parse_args()
     rgb, gray = load_grayscale(args.image)
+
     if args.detector == "harris":
         corners = detect_harris_corners(
             gray,
@@ -158,17 +157,20 @@ def main() -> None:
     else:
         if not args.checkpoint:
             raise ValueError("--checkpoint is required when --detector cnn")
+
         device = torch.device(args.device)
         model = load_model(args.checkpoint, device=device)
         model_input = preprocess_image(gray, args.preprocess)
         heatmap = predict_heatmap(model, model_input, device)
+
+        # Use auto-threshold when the user hasn't set one explicitly
         threshold = auto_threshold(heatmap) if args.threshold < 0 else args.threshold
         print(f"using threshold={threshold:.4f}")
 
         if args.save_heatmap:
-            heatmap_vis = np.clip(heatmap * 255.0, 0, 255).astype(np.uint8)
+            heatmap_vis = (heatmap * 255).astype(np.uint8)
             heatmap_color = cv2.applyColorMap(heatmap_vis, cv2.COLORMAP_INFERNO)
-            heatmap_path = str(Path(args.out).with_name(f"{Path(args.out).stem}_heatmap.png"))
+            heatmap_path = args.out.replace(".png", "_heatmap.png")
             cv2.imwrite(heatmap_path, heatmap_color)
             print(f"heatmap saved to {heatmap_path}")
 
@@ -179,6 +181,7 @@ def main() -> None:
             max_corners=args.max_corners,
             border_margin=args.border_margin,
         )
+
     output = overlay_corners(rgb, corners)
     Image.fromarray(output).save(args.out)
     print(f"detected_corners={len(corners)} saved={args.out}")

@@ -37,10 +37,24 @@ python infer.py --checkpoint runs/corner_detector_best.pt --image path/to/image.
 ```
 
 The output image overlays detected corners on the input image.
-For real images, the default inference path uses Canny preprocessing because the model was trained on synthetic line drawings. To run on the raw grayscale image instead:
+The default detector is the trained CNN. The script uses the saved training
+resolution from the checkpoint and chooses a per-image threshold unless you pass
+`--threshold`.
 
 ```bash
-python infer.py --checkpoint runs/corner_detector_best.pt --image path/to/image.png --out prediction.png --preprocess gray --threshold 0.35 --nms-kernel 7 --border-margin 0
+python infer.py --image path/to/test.png --out prediction.png
+```
+
+To compare against a classical Harris baseline explicitly:
+
+```bash
+python infer.py --detector harris --image path/to/test.png --out harris_prediction.png
+```
+
+For clean synthetic-looking images such as the cube, CNN+Canny can find more edge corners:
+
+```bash
+python infer.py --checkpoint runs/corner_detector_best.pt --image path/to/image.png --out prediction.png --preprocess canny --threshold 0.95 --nms-kernel 15
 ```
 
 ## Model Output

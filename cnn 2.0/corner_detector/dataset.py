@@ -10,14 +10,14 @@ import torch
 from torch.utils.data import Dataset
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class SyntheticConfig:
     image_size: int = 128
     min_shapes: int = 1
-    max_shapes: int = 5
+    max_shapes: int = 3
     heatmap_sigma: float = 2.0
-    noise_std: float = 0.035
-    blur_probability: float = 0.25
+    noise_std: float = 0.05
+    blur_probability: float = 0.4
 
 
 def draw_gaussian(heatmap: np.ndarray, x: int, y: int, sigma: float) -> None:
@@ -106,6 +106,10 @@ def make_synthetic_sample(config: SyntheticConfig, rng: random.Random) -> tuple[
 
     noise = np.random.default_rng(self_seed(config, rng)).normal(0, config.noise_std, image.shape)
     image = np.clip(image + noise.astype(np.float32), 0.0, 1.0)
+    # Random contrast/brightness shift
+    alpha = rng.uniform(0.7, 1.3)   # contrast
+    beta = rng.uniform(-0.1, 0.1)   # brightness
+    image = np.clip(alpha * image + beta, 0.0, 1.0)
     return image.astype(np.float32), heatmap.astype(np.float32)
 
 
