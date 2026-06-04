@@ -27,9 +27,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def weighted_heatmap_loss(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    # Corners occupy very few pixels, so positives get extra weight.
-    weights = 1.0 + 8.0 * targets
-    return nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights)
+    # Corners occupy very few pixels. Focal weighting keeps the model from
+    # learning the easy "mostly background" solution.
+    probs = torch.sigmoid(logits)
+    bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+    pt = probs * targets + (1.0 - probs) * (1.0 - targets)
+    focal = (1.0 - pt).pow(2.0)
+    positive_weight = 1.0 + 35.0 * targets
+    return (bce * focal * positive_weight).mean()
 
 
 @torch.no_grad()
@@ -68,7 +73,7 @@ def main() -> None:
         model.train()
         running = 0.0
         seen = 0
-        progress = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", leave=False)
+        progress = tqdm(train_loader, desc=f"epoch {epoch}/{args.epochs}", leave=False, disable=True)
         for images, targets in progress:
             images = images.to(device)
             targets = targets.to(device)
@@ -101,4 +106,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

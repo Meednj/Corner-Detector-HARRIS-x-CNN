@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
         help="Detection threshold in [0, 1]. Use -1 for automatic CNN thresholding.",
     )
     parser.add_argument("--nms-kernel", type=int, default=21)
-    parser.add_argument("--max-corners", type=int, default=28)
+    parser.add_argument("--max-corners", type=int, default=200)
     parser.add_argument("--border-margin", type=int, default=10)
     parser.add_argument(
         "--detector",
@@ -79,8 +79,8 @@ def auto_threshold(heatmap: np.ndarray) -> float:
     """Choose a conservative per-image threshold from the strongest CNN responses."""
     top = heatmap[heatmap >= np.percentile(heatmap, 99.0)]
     if top.size == 0:
-        return 0.5
-    return float(np.clip(top.mean() - top.std(), 0.1, 0.95))
+        return 0.6
+    return float(np.clip(top.mean() - top.std(), 0.6, 0.95))
 
 
 @torch.no_grad()

@@ -16,11 +16,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CNN corner detection on an image.")
     parser.add_argument("--checkpoint", default="runs/corner_detector_best.pt")
     parser.add_argument("--image", required=True)
-    parser.add_argument("--out", default="prediction.png")
     parser.add_argument("--threshold", type=float, default=-1.0,
                         help="Detection threshold (0-1). Use -1 for auto (recommended).")
     parser.add_argument("--nms-kernel", type=int, default=21)
-    parser.add_argument("--max-corners", type=int, default=28)
+    parser.add_argument("--max-corners", type=int, default=200)
     parser.add_argument("--border-margin", type=int, default=10)
     parser.add_argument(
         "--detector",
@@ -75,8 +74,8 @@ def auto_threshold(heatmap: np.ndarray) -> float:
     flat = heatmap.flatten()
     top = flat[flat >= np.percentile(flat, 99.0)]
     if len(top) == 0:
-        return 0.5
-    return float(np.clip(top.mean() - top.std(), 0.1, 0.95))
+        return 0.6
+    return float(np.clip(top.mean() - top.std(), 0.6, 0.95))
 
 
 @torch.no_grad()
@@ -140,9 +139,17 @@ def detect_harris_corners(
     return detections
 
 
+def build_output_path(image_path: str | Path) -> Path:
+    image = Path(image_path)
+    results_dir = Path("results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    return results_dir / f"{image.stem}_pred.png"
+
+
 def main() -> None:
     args = parse_args()
     rgb, gray = load_grayscale(args.image)
+    output_path = build_output_path(args.image)
 
     if args.detector == "harris":
         corners = detect_harris_corners(
@@ -170,8 +177,8 @@ def main() -> None:
         if args.save_heatmap:
             heatmap_vis = (heatmap * 255).astype(np.uint8)
             heatmap_color = cv2.applyColorMap(heatmap_vis, cv2.COLORMAP_INFERNO)
-            heatmap_path = args.out.replace(".png", "_heatmap.png")
-            cv2.imwrite(heatmap_path, heatmap_color)
+            heatmap_path = output_path.with_name(f"{output_path.stem}_heatmap.png")
+            cv2.imwrite(str(heatmap_path), heatmap_color)
             print(f"heatmap saved to {heatmap_path}")
 
         corners = find_corners(
@@ -183,8 +190,8 @@ def main() -> None:
         )
 
     output = overlay_corners(rgb, corners)
-    Image.fromarray(output).save(args.out)
-    print(f"detected_corners={len(corners)} saved={args.out}")
+    Image.fromarray(output).save(output_path)
+    print(f"detected_corners={len(corners)} saved={output_path}")
 
 
 if __name__ == "__main__":

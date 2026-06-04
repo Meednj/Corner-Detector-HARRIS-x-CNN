@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNN 2.0 vs Harris Corner Detector</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0a0d10;
+      --panel: #10161d;
+      --panel-2: #141c23;
+      --border: #28333f;
+      --text: #e6edf3;
+      --muted: #8b9aaa;
+      --cnn: #ff4f5e;
+      --harris: #23b8d8;
+      --accent: #e8c86b;
+      --radius: 8px;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: #0d1217;
+    }
+
+    .topbar {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(135deg, rgba(255, 79, 94, .9), rgba(35, 184, 216, .9));
+      box-shadow: 0 0 24px rgba(35, 184, 216, .16);
+      flex: 0 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-pill {
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    main {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 26px 24px 48px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel,
+    .result-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .panel {
+      padding: 18px;
+      position: sticky;
+      top: 18px;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .dropzone {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #3d4a57;
+      border-radius: var(--radius);
+      background: #0c1116;
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .dropzone.drag-over {
+      border-color: var(--harris);
+      background: #0e1820;
+    }
+
+    .dropzone input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .empty-upload {
+      text-align: center;
+      color: var(--muted);
+      padding: 24px;
+    }
+
+    .upload-icon {
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 24px;
+    }
+
+    #preview {
+      width: 100%;
+      height: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      display: none;
+      background: #080b0e;
+    }
+
+    .controls {
+      margin-top: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .control {
+      display: grid;
+      gap: 7px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .value {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #0b1015;
+      color: var(--text);
+      padding: 9px 10px;
+      font: inherit;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .run-button {
+      width: 100%;
+      min-height: 42px;
+      border: 0;
+      border-radius: 6px;
+      color: #111;
+      background: var(--accent);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .run-button:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+    }
+
+    .error {
+      display: none;
+      margin-top: 14px;
+      border: 1px solid rgba(255, 79, 94, .45);
+      color: #ff9ca5;
+      background: rgba(255, 79, 94, .08);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .error.visible {
+      display: block;
+    }
+
+    .results {
+      display: grid;
+      gap: 18px;
+    }
+
+    .original-card {
+      display: none;
+    }
+
+    .original-card.visible {
+      display: block;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .result-card {
+      overflow: hidden;
+    }
+
+    .card-head {
+      min-height: 50px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-2);
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .count {
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #0b1015;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .cnn .count {
+      color: var(--cnn);
+    }
+
+    .harris .count {
+      color: var(--harris);
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .image-box {
+      min-height: 260px;
+      background: #080b0e;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .image-box img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: contain;
+      flex: 1;
+      background: #07090c;
+    }
+
+    .caption {
+      min-height: 36px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      background: #0c1116;
+    }
+
+    .placeholder {
+      min-height: 520px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: #0c1116;
+      text-align: center;
+      padding: 28px;
+    }
+
+    @media (max-width: 980px) {
+      .workspace,
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      h1 {
+        white-space: normal;
+      }
+
+      main {
+        padding-inline: 16px;
+      }
+
+      .image-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        
+        <h1>CNN 2.0 and Harris Corner Detector</h1>
+      </div>
+      <div class="status-pill" id="statusText">Waiting for image</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="workspace">
+      <aside class="panel">
+        <p class="section-title">Input</p>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*">
+          <div class="empty-upload" id="uploadHint">
+            <div class="upload-icon">+</div>
+            <strong>Choose an image</strong>
+            <div>PNG, JPG, JPEG, or WebP</div>
+          </div>
+          <img id="preview" alt="Input preview">
+        </label>
+
+        <div class="controls">
+          <p class="section-title">CNN 2.0</p>
+          <label class="control">
+            <span class="control-row">
+              <span>Threshold</span>
+              <span class="value" id="cnnThresholdValue">Auto</span>
+            </span>
+            <input type="range" id="cnnThreshold" min="-1" max="0.95" step="0.05" value="-1">
+          </label>
+          <label class="control">
+            <span class="control-row">
+              <span>NMS kernel</span>
+              <span class="value" id="cnnNmsValue">21</span>
+            </span>
+            <input type="range" id="cnnNms" min="3" max="41" step="2" value="21">
+          </label>
+          <label class="control">
+            <span class="control-row">
+              <span>Preprocess</span>
+            </span>
+            <select id="preprocess">
+              <option value="gray" selected>Gray</option>
+              <option value="sobel">Sobel</option>
+              <option value="canny">Canny</option>
+              <option value="invert">Invert</option>
+            </select>
+          </label>
+
+          <p class="section-title">Harris</p>
+          <label class="control">
+            <span class="control-row">
+              <span>Threshold ratio</span>
+              <span class="value" id="harrisThresholdValue">0.010</span>
+            </span>
+            <input type="range" id="harrisThreshold" min="0.001" max="0.1" step="0.001" value="0.01">
+          </label>
+          <label class="control">
+            <span class="control-row">
+              <span>NMS kernel</span>
+              <span class="value" id="harrisNmsValue">7</span>
+            </span>
+            <input type="range" id="harrisNms" min="3" max="25" step="2" value="7">
+          </label>
+          <label class="control">
+            <span class="control-row">
+              <span>Max corners</span>
+            </span>
+            <input type="number" id="maxCorners" min="1" max="1000" value="200">
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="saveResults" checked>
+            <span>Save result files</span>
+          </label>
+          <button class="run-button" id="runBtn" disabled>Run both detectors</button>
+        </div>
+        <div class="error" id="errorBox"></div>
+      </aside>
+
+      <section class="results">
+        <div class="result-card original-card" id="originalCard">
+          <div class="card-head">
+            <h2>Input image</h2>
+            <span class="count" id="savePath"></span>
+          </div>
+          <div class="image-box">
+            <img id="outOriginal" alt="Original image">
+          </div>
+        </div>
+
+        <div class="placeholder" id="placeholder">
+          Upload one image, then run both methods to compare their corner overlays and heatmaps.
+        </div>
+
+        <div class="compare-grid" id="compareGrid" style="display:none">
+          <article class="result-card cnn">
+            <div class="card-head">
+              <h2>CNN 2.0</h2>
+              <span class="count" id="cnnCount">0 corners</span>
+            </div>
+            <div class="image-grid">
+              <div class="image-box">
+                <img id="outCnnOverlay" alt="CNN corner overlay">
+                <div class="caption">Output overlay</div>
+              </div>
+              <div class="image-box">
+                <img id="outCnnHeatmap" alt="CNN heatmap">
+                <div class="caption" id="cnnHeatCaption">Heatmap</div>
+              </div>
+            </div>
+          </article>
+
+          <article class="result-card harris">
+            <div class="card-head">
+              <h2>Harris Detector</h2>
+              <span class="count" id="harrisCount">0 corners</span>
+            </div>
+            <div class="image-grid">
+              <div class="image-box">
+                <img id="outHarrisOverlay" alt="Harris corner overlay">
+                <div class="caption">Output overlay</div>
+              </div>
+              <div class="image-box">
+                <img id="outHarrisHeatmap" alt="Harris heatmap">
+                <div class="caption">Response heatmap</div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const preview = document.getElementById('preview');
+    const uploadHint = document.getElementById('uploadHint');
+    const runBtn = document.getElementById('runBtn');
+    const errorBox = document.getElementById('errorBox');
+    const statusText = document.getElementById('statusText');
+
+    const cnnThreshold = document.getElementById('cnnThreshold');
+    const cnnNms = document.getElementById('cnnNms');
+    const harrisThreshold = document.getElementById('harrisThreshold');
+    const harrisNms = document.getElementById('harrisNms');
+
+    function updateControlLabels() {
+      const cnnValue = Number(cnnThreshold.value);
+      document.getElementById('cnnThresholdValue').textContent = cnnValue < 0 ? 'Auto' : cnnValue.toFixed(2);
+      document.getElementById('cnnNmsValue').textContent = cnnNms.value;
+      document.getElementById('harrisThresholdValue').textContent = Number(harrisThreshold.value).toFixed(3);
+      document.getElementById('harrisNmsValue').textContent = harrisNms.value;
+    }
+
+    [cnnThreshold, cnnNms, harrisThreshold, harrisNms].forEach(input => {
+      input.addEventListener('input', updateControlLabels);
+    });
+    updateControlLabels();
+
+    function setImage(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
+      uploadHint.style.display = 'none';
+      runBtn.disabled = false;
+      errorBox.classList.remove('visible');
+      statusText.textContent = file.name;
+      document.getElementById('placeholder').style.display = 'grid';
+      document.getElementById('compareGrid').style.display = 'none';
+      document.getElementById('originalCard').classList.remove('visible');
+    }
+
+    fileInput.addEventListener('change', () => setImage(fileInput.files[0]));
+
+    dropzone.addEventListener('dragover', event => {
+      event.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+
+    dropzone.addEventListener('drop', event => {
+      event.preventDefault();
+      dropzone.classList.remove('drag-over');
+      if (event.dataTransfer.files[0]) {
+        fileInput.files = event.dataTransfer.files;
+        setImage(event.dataTransfer.files[0]);
+      }
+    });
+
+    function imageSrc(base64) {
+      return `data:image/png;base64,${base64}`;
+    }
+
+    async function runDetection() {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('cnn_threshold', cnnThreshold.value);
+      formData.append('cnn_nms_kernel', cnnNms.value);
+      formData.append('preprocess', document.getElementById('preprocess').value);
+      formData.append('harris_threshold', harrisThreshold.value);
+      formData.append('harris_nms_kernel', harrisNms.value);
+      formData.append('max_corners', document.getElementById('maxCorners').value);
+      formData.append('save_results', document.getElementById('saveResults').checked);
+
+      runBtn.disabled = true;
+      runBtn.textContent = 'Processing...';
+      statusText.textContent = 'Running CNN 2.0 and Harris';
+      errorBox.classList.remove('visible');
+
+      try {
+        const response = await fetch('/detect', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || 'Detection failed');
+
+        document.getElementById('outOriginal').src = imageSrc(data.original);
+        document.getElementById('outCnnOverlay').src = imageSrc(data.cnn_overlay);
+        document.getElementById('outCnnHeatmap').src = imageSrc(data.cnn_heatmap);
+        document.getElementById('outHarrisOverlay').src = imageSrc(data.harris_overlay);
+        document.getElementById('outHarrisHeatmap').src = imageSrc(data.harris_heatmap);
+
+        document.getElementById('cnnCount').textContent = `${data.cnn_corner_count} corners`;
+        document.getElementById('harrisCount').textContent = `${data.harris_corner_count} corners`;
+        document.getElementById('cnnHeatCaption').textContent = `Heatmap, threshold ${Number(data.cnn_threshold).toFixed(3)}`;
+        document.getElementById('savePath').textContent = data.saved ? data.result_path : 'Not saved';
+
+        document.getElementById('originalCard').classList.add('visible');
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('compareGrid').style.display = 'grid';
+        statusText.textContent = 'Comparison ready';
+      } catch (error) {
+        errorBox.textContent = error.message || 'Server error';
+        errorBox.classList.add('visible');
+        statusText.textContent = 'Detection error';
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run both detectors';
+      }
+    }
+
+    runBtn.addEventListener('click', runDetection);
+  </script>
+</body>
+
+</html>
