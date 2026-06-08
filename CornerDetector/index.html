@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CNN 2.0 vs Harris Corner Detector</title>
+  <title>CNN Method vs Classic Corner Detector Method (Harris)</title>
   <style>
     *,
     *::before,
@@ -257,6 +257,128 @@
       gap: 18px;
     }
 
+    .curve-section {
+      display: none;
+    }
+
+    .curve-section.visible {
+      display: block;
+    }
+
+    .curve-panel {
+      padding: 14px;
+    }
+
+    .curve-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      justify-content: flex-start;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .legend-swatch.cnn {
+      background: var(--cnn);
+    }
+
+    .legend-swatch.harris {
+      background: var(--harris);
+    }
+
+    .curve-chart-wrap {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #0b1015;
+      overflow: hidden;
+    }
+
+    .curve-chart {
+      width: 100%;
+      height: 420px;
+      display: block;
+      background:
+        radial-gradient(circle at top left, rgba(255, 79, 94, .08), transparent 35%),
+        radial-gradient(circle at bottom right, rgba(35, 184, 216, .08), transparent 35%),
+        #0b1015;
+    }
+
+    .curve-grid line {
+      stroke: rgba(139, 154, 170, .2);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+    }
+
+    .curve-grid .major {
+      stroke: rgba(139, 154, 170, .36);
+    }
+
+    .curve-axis {
+      stroke: rgba(139, 154, 170, .5);
+      stroke-width: 1.5;
+      shape-rendering: crispEdges;
+    }
+
+    .curve-axis-label {
+      fill: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .01em;
+    }
+
+    .curve-label {
+      fill: var(--muted);
+      font-size: 12px;
+    }
+
+    .curve-tick {
+      fill: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .curve-line {
+      fill: none;
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .curve-area {
+      opacity: .12;
+    }
+
+    .curve-line.cnn {
+      stroke: var(--cnn);
+      filter: drop-shadow(0 0 6px rgba(255, 79, 94, .22));
+    }
+
+    .curve-line.harris {
+      stroke: var(--harris);
+      filter: drop-shadow(0 0 6px rgba(35, 184, 216, .22));
+    }
+
+    .curve-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .original-card {
       display: none;
     }
@@ -353,6 +475,7 @@
     }
 
     @media (max-width: 980px) {
+
       .workspace,
       .compare-grid {
         grid-template-columns: 1fr;
@@ -388,8 +511,8 @@
   <header>
     <div class="topbar">
       <div class="brand">
-        
-        <h1>CNN 2.0 and Harris Corner Detector</h1>
+
+        <h1>CNN Method and Classic Corner Detector Method (Harris)</h1>
       </div>
       <div class="status-pill" id="statusText">Waiting for image</div>
     </div>
@@ -410,7 +533,7 @@
         </label>
 
         <div class="controls">
-          <p class="section-title">CNN 2.0</p>
+          <p class="section-title">CNN Method</p>
           <label class="control">
             <span class="control-row">
               <span>Threshold</span>
@@ -427,17 +550,16 @@
           </label>
           <label class="control">
             <span class="control-row">
-              <span>Preprocess</span>
+              <span>Method</span>
             </span>
             <select id="preprocess">
               <option value="gray" selected>Gray</option>
               <option value="sobel">Sobel</option>
-              <option value="canny">Canny</option>
               <option value="invert">Invert</option>
             </select>
           </label>
 
-          <p class="section-title">Harris</p>
+          <p class="section-title">Classic Method (Harris)</p>
           <label class="control">
             <span class="control-row">
               <span>Threshold ratio</span>
@@ -485,7 +607,7 @@
         <div class="compare-grid" id="compareGrid" style="display:none">
           <article class="result-card cnn">
             <div class="card-head">
-              <h2>CNN 2.0</h2>
+              <h2>CNN Method</h2>
               <span class="count" id="cnnCount">0 corners</span>
             </div>
             <div class="image-grid">
@@ -517,6 +639,50 @@
             </div>
           </article>
         </div>
+
+        <section class="curve-section" id="curveSection">
+          <article class="result-card curve-panel">
+            <div class="card-head">
+              <h2>Corner Score Curves</h2>
+              <span class="count" id="curveStatus">Waiting for results</span>
+            </div>
+
+            <div class="curve-legend">
+              <span class="legend-item"><span class="legend-swatch cnn"></span>CNN</span>
+              <span class="legend-item"><span class="legend-swatch harris"></span>Harris</span>
+            </div>
+
+            <div class="curve-chart-wrap">
+              <svg id="curveChart" class="curve-chart" viewBox="0 0 800 420" preserveAspectRatio="none" role="img"
+                aria-label="Corner score curves for CNN and Harris">
+                <g id="curveGrid" class="curve-grid"></g>
+                <line class="curve-axis" x1="60" y1="30" x2="60" y2="380"></line>
+                <line class="curve-axis" x1="60" y1="380" x2="770" y2="380"></line>
+                <text class="curve-axis-label" x="90" y="24">SSIM Curve : score per corner rank</text>
+                <text class="curve-label" x="18" y="36">1.0</text>
+                <text class="curve-label" x="18" y="384">0.0</text>
+                <text class="curve-tick" x="48" y="384">0</text>
+                <text class="curve-tick" x="48" y="314">0.25</text>
+                <text class="curve-tick" x="48" y="244">0.50</text>
+                <text class="curve-tick" x="48" y="174">0.75</text>
+                <text class="curve-tick" x="48" y="104">1.00</text>
+                <text class="curve-tick" x="60" y="404">1</text>
+                <text class="curve-tick" x="235" y="404">25%</text>
+                <text class="curve-tick" x="395" y="404">50%</text>
+                <text class="curve-tick" x="565" y="404">75%</text>
+                <text class="curve-tick" x="734" y="404">100%</text>
+                <text class="curve-axis-label" x="344" y="410">Corner rank (strongest → weakest)</text>
+                <text class="curve-axis-label" x="6" y="212" transform="rotate(-90 6 212)">Score / confidence</text>
+                <path id="cnnCurvePath" class="curve-line cnn"></path>
+                <path id="harrisCurvePath" class="curve-line harris"></path>
+              </svg>
+            </div>
+
+            <div class="curve-note">Each curve shows the corner score ordered from the strongest corner at rank 1 to the
+              weakest corner at the far right.
+            </div>
+          </article>
+        </section>
       </section>
     </div>
   </main>
@@ -529,6 +695,12 @@
     const runBtn = document.getElementById('runBtn');
     const errorBox = document.getElementById('errorBox');
     const statusText = document.getElementById('statusText');
+    const curveSection = document.getElementById('curveSection');
+    const curveStatus = document.getElementById('curveStatus');
+    const curveChart = document.getElementById('curveChart');
+    const curveGrid = document.getElementById('curveGrid');
+    const cnnCurvePath = document.getElementById('cnnCurvePath');
+    const harrisCurvePath = document.getElementById('harrisCurvePath');
 
     const cnnThreshold = document.getElementById('cnnThreshold');
     const cnnNms = document.getElementById('cnnNms');
@@ -583,6 +755,111 @@
       return `data:image/png;base64,${base64}`;
     }
 
+    function buildCurvePath(scores, width, height, margin) {
+      if (!scores || scores.length === 0) return '';
+
+      const plotWidth = width - (margin * 2);
+      const plotHeight = height - (margin * 2);
+      const lastIndex = Math.max(1, scores.length - 1);
+
+      return scores
+        .map((score, index) => {
+          const x = margin + (plotWidth * index / lastIndex);
+          const normalized = Math.max(0, Math.min(1, Number(score)));
+          const y = margin + (plotHeight * (1 - normalized));
+          return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+        .join(' ');
+    }
+
+    function buildCurveAreaPath(scores, width, height, margin) {
+      const linePath = buildCurvePath(scores, width, height, margin);
+      if (!linePath) return '';
+
+      const plotHeight = height - (margin * 2);
+      const lastIndex = Math.max(1, scores.length - 1);
+      const startX = margin;
+      const endX = margin + ((width - (margin * 2)) * lastIndex / lastIndex);
+      return `${linePath} L ${endX.toFixed(2)} ${(height - margin).toFixed(2)} L ${startX.toFixed(2)} ${(height - margin).toFixed(2)} Z`;
+    }
+
+    function renderCurveGrid() {
+      const width = 800;
+      const height = 420;
+      const margin = 60;
+      const rows = 5;
+      const cols = 6;
+      const plotWidth = width - (margin * 2);
+      const plotHeight = height - (margin * 2);
+
+      curveGrid.innerHTML = '';
+
+      for (let row = 0; row <= rows; row += 1) {
+        const y = margin + (plotHeight * row / rows);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', margin);
+        line.setAttribute('x2', width - margin);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        if (row === 0 || row === rows / 2 || row === rows) {
+          line.classList.add('major');
+        }
+        curveGrid.appendChild(line);
+      }
+
+      for (let col = 0; col <= cols; col += 1) {
+        const x = margin + (plotWidth * col / cols);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x);
+        line.setAttribute('x2', x);
+        line.setAttribute('y1', margin);
+        line.setAttribute('y2', height - margin);
+        if (col === 0 || col === cols / 2 || col === cols) {
+          line.classList.add('major');
+        }
+        curveGrid.appendChild(line);
+      }
+    }
+
+    function renderCurveChart(curves) {
+      const cnnScores = Array.isArray(curves?.cnn) ? curves.cnn : [];
+      const harrisScores = Array.isArray(curves?.harris) ? curves.harris : [];
+      const width = 800;
+      const height = 420;
+      const margin = 60;
+
+      renderCurveGrid();
+
+      const cnnArea = buildCurveAreaPath(cnnScores, width, height, margin);
+      const harrisArea = buildCurveAreaPath(harrisScores, width, height, margin);
+
+      const existingAreas = document.querySelectorAll('.curve-area');
+      existingAreas.forEach(area => area.remove());
+
+      if (cnnArea) {
+        const cnnAreaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        cnnAreaPath.setAttribute('d', cnnArea);
+        cnnAreaPath.setAttribute('class', 'curve-area cnn');
+        cnnAreaPath.setAttribute('fill', 'rgba(255, 79, 94, .35)');
+        curveChart.insertBefore(cnnAreaPath, cnnCurvePath);
+      }
+
+      if (harrisArea) {
+        const harrisAreaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        harrisAreaPath.setAttribute('d', harrisArea);
+        harrisAreaPath.setAttribute('class', 'curve-area harris');
+        harrisAreaPath.setAttribute('fill', 'rgba(35, 184, 216, .28)');
+        curveChart.insertBefore(harrisAreaPath, harrisCurvePath);
+      }
+
+      cnnCurvePath.setAttribute('d', buildCurvePath(cnnScores, width, height, margin));
+      harrisCurvePath.setAttribute('d', buildCurvePath(harrisScores, width, height, margin));
+
+      const maxPoints = Math.max(cnnScores.length, harrisScores.length);
+      curveStatus.textContent = `${cnnScores.length} CNN points, ${harrisScores.length} Classic Harris points`;
+      curveSection.classList.toggle('visible', maxPoints > 0);
+    }
+
     async function runDetection() {
       const file = fileInput.files[0];
       if (!file) return;
@@ -599,8 +876,9 @@
 
       runBtn.disabled = true;
       runBtn.textContent = 'Processing...';
-      statusText.textContent = 'Running CNN 2.0 and Harris';
+      statusText.textContent = 'Running CNN Method and Classic Method (Harris)';
       errorBox.classList.remove('visible');
+      curveSection.classList.remove('visible');
 
       try {
         const response = await fetch('/detect', { method: 'POST', body: formData });
@@ -622,6 +900,8 @@
         document.getElementById('placeholder').style.display = 'none';
         document.getElementById('compareGrid').style.display = 'grid';
         statusText.textContent = 'Comparison ready';
+
+        renderCurveChart(data.curves);
       } catch (error) {
         errorBox.textContent = error.message || 'Server error';
         errorBox.classList.add('visible');

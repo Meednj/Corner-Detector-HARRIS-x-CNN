@@ -11,14 +11,19 @@ from PIL import Image
 from corner_detector.model import load_model
 from corner_detector.postprocess import find_corners
 
+#parametre que vous m'avez demander de faire dans la derniere reunion pfe
+IMAGE_PATH = Path("path/to/godmode.png")
+THRESHOLD = -1.0 #-1 est la valeur automatique
+NMS_KERNEL = 21
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CNN corner detection on an image.")
     parser.add_argument("--checkpoint", default="runs/corner_detector_best.pt")
-    parser.add_argument("--image", required=True)
-    parser.add_argument("--threshold", type=float, default=-1.0,
+    parser.add_argument("--image", default=str(IMAGE_PATH), help="Image to process. Defaults to IMAGE_PATH.")
+    parser.add_argument("--threshold", type=float, default=THRESHOLD,
                         help="Detection threshold (0-1). Use -1 for auto (recommended).")
-    parser.add_argument("--nms-kernel", type=int, default=21)
+    parser.add_argument("--nms-kernel", type=int, default=NMS_KERNEL)
     parser.add_argument("--max-corners", type=int, default=200)
     parser.add_argument("--border-margin", type=int, default=10)
     parser.add_argument(
@@ -81,13 +86,13 @@ def auto_threshold(heatmap: np.ndarray) -> float:
 @torch.no_grad()
 def predict_heatmap(model: torch.nn.Module, gray: np.ndarray, device: torch.device) -> np.ndarray:
     H, W = gray.shape
-    # Resize to the resolution recorded in the checkpoint.
+
     model_size = getattr(model, "image_size", 128)
     resized = cv2.resize(gray, (model_size, model_size), interpolation=cv2.INTER_LINEAR)
     tensor = torch.from_numpy(resized[None, None, ...]).float().to(device)
     logits = model(tensor)
     heatmap_small = torch.sigmoid(logits)[0, 0].cpu().numpy()
-    # Scale heatmap back to original image size
+
     return cv2.resize(heatmap_small, (W, H), interpolation=cv2.INTER_LINEAR)
 
 

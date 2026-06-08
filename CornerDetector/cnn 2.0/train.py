@@ -27,8 +27,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def weighted_heatmap_loss(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    # Corners occupy very few pixels. Focal weighting keeps the model from
-    # learning the easy "mostly background" solution.
     probs = torch.sigmoid(logits)
     bce = nn.functional.binary_cross_entropy_with_logits(logits, targets, reduction="none")
     pt = probs * targets + (1.0 - probs) * (1.0 - targets)

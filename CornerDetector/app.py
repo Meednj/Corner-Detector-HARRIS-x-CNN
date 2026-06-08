@@ -85,9 +85,6 @@ def preprocess_image(gray: np.ndarray, mode: str) -> np.ndarray:
         result = gray.copy()
     elif mode == "invert":
         result = 1.0 - gray
-    elif mode == "canny":
-        gray_u8 = (gray * 255).astype(np.uint8)
-        result = cv2.Canny(gray_u8, 50, 150).astype(np.float32) / 255.0
     elif mode == "sobel":
         grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0)
         grad_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1)
@@ -107,6 +104,20 @@ def auto_threshold(heatmap: np.ndarray) -> float:
     if top.size == 0:
         return 0.6
     return float(np.clip(top.mean() - top.std(), 0.6, 0.95))
+
+
+def build_score_curve(corners: list[tuple[int, int, float]], max_points: int = 200) -> list[float]:
+    scores = [float(score) for _, _, score in sorted(corners, key=lambda item: item[2], reverse=True)]
+    return scores[:max_points]
+
+
+def build_curve_metrics(cnn_corners: list[tuple[int, int, float]], harris_corners: list[tuple[int, int, float]]) -> dict[str, object]:
+    cnn_curve = build_score_curve(cnn_corners)
+    harris_curve = build_score_curve(harris_corners)
+    return {
+        "cnn": cnn_curve,
+        "harris": harris_curve,
+    }
 
 
 def find_matlab_executable() -> str:
@@ -380,6 +391,7 @@ def detect():
         harris_overlay = draw_corners(rgb, harris_corners, (35, 195, 255))
         cnn_heatmap_vis = cv2.cvtColor(colorize_response(cnn_heatmap), cv2.COLOR_BGR2RGB)
         harris_heatmap_vis = cv2.cvtColor(colorize_response(np.maximum(harris_map, 0), cv2.COLORMAP_TURBO), cv2.COLOR_BGR2RGB)
+        curve_metrics = build_curve_metrics(cnn_corners, harris_corners)
 
         metadata = {
             "timestamp": datetime.now().isoformat(),
@@ -393,6 +405,7 @@ def detect():
                 "threshold_ratio": harris_threshold,
                 "corners": [{"x": x, "y": y, "score": score} for x, y, score in harris_corners],
             },
+            "curves": curve_metrics,
         }
 
         result_path = None
@@ -418,6 +431,7 @@ def detect():
                 "cnn_corner_count": len(cnn_corners),
                 "harris_corner_count": len(harris_corners),
                 "cnn_threshold": resolved_threshold,
+                "curves": curve_metrics,
                 "saved": save_results,
                 "result_path": result_path,
             }
